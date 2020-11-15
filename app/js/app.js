@@ -5,7 +5,7 @@ testingAngularApp.controller('testingAngularCtrl', function ($rootScope, $scope,
     
     $scope.destinations = [];
 
-    $scope.apiKey = '9b8c536dbcec5326614b87ea78a7c611';
+    $scope.apiKey = '<>';
     
     $scope.newDestination = {
         city: undefined,
