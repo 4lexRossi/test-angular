@@ -3,12 +3,14 @@ describe('Testing AngularJS Test Suite', function() {
   beforeEach(module('testingAngularApp'));
   
   describe('Testing AngularJS Controller', function() {         
-    var scope, ctrl, httpBackend;
+    var scope, ctrl, httpBackend, timeout, rootScope;
 
-    beforeEach(inject(function($controller, $rootScope, $httpBackend) {
+    beforeEach(inject(function($controller, $rootScope, $httpBackend, $timeout) {
+      rootScope = $rootScope;
       scope = $rootScope.$new();
       ctrl = $controller('testingAngularCtrl', {$scope:scope});
-      httpBackend =$httpBackend;    
+      httpBackend = $httpBackend;
+      timeout = $timeout;
     }));
 
     afterEach(function () {
@@ -69,6 +71,96 @@ describe('Testing AngularJS Test Suite', function() {
 
     });
 
+    it('should remove error message after a fixed period of time', function () {
+      rootScope.message = "Error";
+      expect(rootScope.message).toBe("Error");
+      
+      rootScope.$apply();
+      timeout.flush();
+
+      expect(rootScope.message).toBeNull;
+    });
+
+  });
+
+  describe('Testing AngularJS Filter', function () {
+    it('should return only warm destinations', inject(function ($filter) {
+      var warmest = $filter('warmestDestinations');
+
+      var destinations = [
+        {
+          city: 'Melbourne',
+          country: 'Australia',
+          weather: {
+            temp: 21
+          } 
+        },
+        {
+          city: 'Moscow',
+          country: 'Russia'          
+        },
+        {
+          city: 'Mexico City',
+          country: 'Mexico',
+          weather: {
+            temp: 12
+          } 
+        },
+        {
+          city: 'Lima',
+          country: 'Peru',
+          weather: {
+            temp: 15
+          } 
+        },
+      ];
+      expect(destinations.length).toBe(4);
+      
+      var warmDestinations = warmest(destinations, 15);
+      
+      expect(warmDestinations.length).toBe(2);
+      expect(warmDestinations[0].city).toBe("Melbourne");
+      expect(warmDestinations[1].city).toBe("Lima");
+    }));
+  });
+
+  describe('Testing AngularJS Directive', function () {
+    var scope, template, httpBackend, isolateScope, rootScope;
+
+    beforeEach(function () {
+      module(function ($provide) {
+        var MockedConversionService = {
+          convertKelvinToCelsius: function (temp) {
+            return Math.round(temp - 273);
+          }
+        };
+
+        $provide.value('conversionService', MockedConversionService);
+      });
+    });
+
+    beforeEach(inject(function ($compile, $rootScope, $httpBackend) {
+      scope = $rootScope.$new();
+      rootScope = $rootScope;
+      httpBackend = $httpBackend;
+
+      scope.destination = {
+        city: "Tokyo",
+        country: "Japan"
+      };
+
+      scope.apiKey = "xyz";
+
+      var element = angular.element(
+        '<div destination-directive destination="destination" api-key="apiKey" on-remove="remove()"></div>'
+      );
+
+      template = $compile(element) (scope);
+      scope.$digest();
+
+      isolateScope = element.isolateScope();
+    }));
+
     it('should update the weather for a specific destination', function () {
       scope.destination = {
         city: 'Melbourne',
@@ -82,7 +174,7 @@ describe('Testing AngularJS Test Suite', function() {
           main: {temp: 288}
         });
 
-        scope.getWeather(scope.destination);
+        isolateScope.getWeather(scope.destination);
 
         httpBackend.flush();
 
@@ -90,5 +182,64 @@ describe('Testing AngularJS Test Suite', function() {
         expect(scope.destination.weather.temp).toBe(15);
     });
 
+    it('should add a message if city is not found', function () {
+      scope.destination = {
+        city: 'Melbourne',
+        country: 'Australia'
+      };
+
+      httpBackend.expectGET("http://api.openweathermap.org/data/2.5/weather?q=" +
+      scope.destination.city + "&appid=" + scope.apiKey).respond(
+        {});
+
+        isolateScope.getWeather(scope.destination);
+
+        httpBackend.flush();
+
+        expect(rootScope.message).toBe("City not found");
+        
+    });
+    
+    it('should add a message when there is a server error', function () {
+      scope.destination = {
+        city: 'Melbourne',
+        country: 'Australia'
+      };
+
+      httpBackend.expectGET("http://api.openweathermap.org/data/2.5/weather?q=" +
+      scope.destination.city + "&appid=" + scope.apiKey).respond(500);
+
+        isolateScope.getWeather(scope.destination);
+
+        httpBackend.flush();
+
+        expect(rootScope.message).toBe("Server error");
+    });
+
+    it('should call the parent controller remove function', function () {
+      scope.removeTest = 1;
+
+      scope.remove = function () {
+        scope.removeTest++;
+      };
+
+      isolateScope.onRemove();
+
+      expect(scope.removeTest).toBe(2);
+    });
+
+    it('should generate the correct html', function () {
+      var templateAsHtml = template.html();
+
+      expect(templateAsHtml).toContain('Tokyo, Japan');
+
+      scope.destination.city = "London";
+      scope.destination.country = "England";
+
+      scope.$digest();
+      templateAsHtml = template.html();
+
+      expect(templateAsHtml).toContain("London, England");
+    });
   });
 });
